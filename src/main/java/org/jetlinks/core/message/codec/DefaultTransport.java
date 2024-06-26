@@ -28,7 +28,8 @@ public enum DefaultTransport implements Transport {
     HTTPS("HTTPS"),
     WebSocket("WebSocket"),
     @Deprecated
-    WebSockets("WebSocket TLS");
+    WebSockets("WebSocket TLS"),
+    GB28181("GB28181"),;
 
     static {
         Transports.register(Arrays.asList(DefaultTransport.values()));
