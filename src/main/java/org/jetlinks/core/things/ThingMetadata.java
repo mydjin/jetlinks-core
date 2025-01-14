@@ -1,9 +1,12 @@
 package org.jetlinks.core.things;
 
 import com.alibaba.fastjson.JSONObject;
+import org.jetlinks.core.config.ConfigKey;
 import org.jetlinks.core.metadata.*;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -29,6 +32,27 @@ public interface ThingMetadata extends Metadata, Jsonable {
      * @return 标签定义
      */
     List<PropertyMetadata> getTags();
+
+    /**
+     * 预留功能,模块的物模型信息.
+     *
+     * @return 模块物模型信息
+     * @since 1.2.2
+     */
+    default List<ThingMetadata> getModules() {
+        return Collections.emptyList();
+    }
+
+    default ThingMetadata getModuleOrNull(String moduleId) {
+        return getModule(moduleId).orElse(null);
+    }
+
+    default Optional<ThingMetadata> getModule(String moduleId) {
+        return getModules()
+            .stream()
+            .filter(metadata -> Objects.equals(moduleId, metadata.getId()))
+            .findAny();
+    }
 
     default Optional<EventMetadata> getEvent(String id) {
         return Optional.ofNullable(getEventOrNull(id));
@@ -56,10 +80,10 @@ public interface ThingMetadata extends Metadata, Jsonable {
 
     default PropertyMetadata findProperty(Predicate<PropertyMetadata> predicate) {
         return getProperties()
-                .stream()
-                .filter(predicate)
-                .findAny()
-                .orElse(null);
+            .stream()
+            .filter(predicate)
+            .findAny()
+            .orElse(null);
     }
 
     default <T extends ThingMetadata> ThingMetadata merge(T metadata) {
@@ -68,6 +92,18 @@ public interface ThingMetadata extends Metadata, Jsonable {
 
     default <T extends ThingMetadata> ThingMetadata merge(T metadata, MergeOption... options) {
         throw new UnsupportedOperationException("unsupported merge metadata");
+    }
+
+    @Override
+    default ThingMetadata expand(String key, Object value) {
+        Metadata.super.expand(key, value);
+        return this;
+    }
+
+    @Override
+    default <T> ThingMetadata expand(ConfigKey<T> key, T value) {
+        Metadata.super.expand(key, value);
+        return this;
     }
 
     @Override

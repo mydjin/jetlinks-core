@@ -1,6 +1,5 @@
 package org.jetlinks.core.utils;
 
-import com.alibaba.fastjson.JSONObject;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -14,12 +13,16 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import org.hswebframework.web.bean.FastBeanCopier;
 import org.hswebframework.web.dict.EnumDict;
+import org.jetlinks.core.lang.SeparatedCharSequence;
+import org.jetlinks.core.lang.SeparatedString;
+import org.jetlinks.core.lang.SharedPathString;
 import org.jetlinks.core.message.Message;
 import org.jetlinks.core.message.MessageType;
 import org.jetlinks.core.metadata.Jsonable;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.joda.time.LocalDateTime;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ConcurrentReferenceHashMap;
 
 import java.io.Externalizable;
@@ -48,6 +51,8 @@ public class SerializeUtils {
         }
         registerSerializer(new TypedMapSerializer());
         registerSerializer(new TypedCollectionSerializer());
+
+        cache.put(StackTraceElement.class, InternalSerializers.StackTraceElement);
     }
 
     private static final Set<Class<?>> safelySerializable = ConcurrentHashMap.newKeySet();
@@ -136,13 +141,13 @@ public class SerializeUtils {
 
         if (clazz.isArray()) {
             Class<?> ctype = clazz.getComponentType();
-            if(ctype.isPrimitive() || safelySerializable.contains(ctype)){
+            if (ctype.isPrimitive() || safelySerializable.contains(ctype)) {
                 return value;
             }
-            int len =  Array.getLength(value);
+            int len = Array.getLength(value);
             Object[] val = new Object[len];
             for (int i = 0; i < len; i++) {
-                val[i] = convertToSafelySerializable(Array.get(value,i), copy);
+                val[i] = convertToSafelySerializable(Array.get(value, i), copy);
             }
             return val;
         }
@@ -207,6 +212,12 @@ public class SerializeUtils {
         }
         out.writeByte(serializer.getCode());
         serializer.serialize(obj, out);
+    }
+
+    @SneakyThrows
+    @SuppressWarnings("unchecked")
+    public static <T> T readObjectAs(ObjectInput input) {
+        return (T) readObject(input);
     }
 
     @SneakyThrows
@@ -276,6 +287,12 @@ public class SerializeUtils {
         if (readyToSer instanceof ByteBuffer) {
             return InternalSerializers.Nio;
         }
+        if (readyToSer instanceof SharedPathString) {
+            return InternalSerializers.SharedPathStringSer;
+        }
+        if (readyToSer instanceof SeparatedCharSequence) {
+            return InternalSerializers.SeparatedCharSequenceSer;
+        }
         return lookup(readyToSer.getClass());
     }
 
@@ -284,6 +301,11 @@ public class SerializeUtils {
             if (t.isPrimitive()) {
                 t = Primitives.wrap(t);
             }
+            //不是同一个classLoader.使用json序列化.
+            if (t.getClassLoader() != null && t.getClassLoader() != ClassUtils.getDefaultClassLoader()) {
+                return InternalSerializers.JSON;
+            }
+
             for (Serializer type : all) {
                 if (type == null) {
                     continue;
@@ -312,6 +334,24 @@ public class SerializeUtils {
             Object key = readObject(in);
             Object value = readObject(in);
             map.put((K) key, (T) value);
+        }
+        return map;
+    }
+
+    @SneakyThrows
+    public static <K, T> Map<K, T> readMap(ObjectInput in,
+                                           Function<Object, K> keyMapper,
+                                           Function<Object, T> valueMapper,
+                                           Function<Integer, Map<K, T>> mapBuilder) {
+        //header
+        int headerSize = in.readInt();
+
+        Map<K, T> map = mapBuilder.apply(Math.max(8, headerSize));
+
+        for (int i = 0; i < headerSize; i++) {
+            K key = keyMapper.apply(readObject(in));
+            T value = valueMapper.apply(readObject(in));
+            map.put(key, value);
         }
         return map;
     }
@@ -831,10 +871,90 @@ public class SerializeUtils {
             @Override
             @SneakyThrows
             void write(Object value, ObjectOutput output) {
-                output.writeUTF(value.getClass().getName());
+                Class<?> clazz = ClassUtils.getUserClass(value);
+                String className;
+                //跨classloader,序列化为Object
+                if (clazz.getClassLoader() != null
+                    && clazz.getClassLoader() != ClassUtils.getDefaultClassLoader()) {
+                    className = Object.class.getName();
+                } else {
+                    className = clazz.getName();
+                }
+                output.writeUTF(className);
                 byte[] jsonBytes = com.alibaba.fastjson.JSON.toJSONBytes(value);
                 output.writeInt(jsonBytes.length);
                 output.write(jsonBytes);
+            }
+        },
+        SharedPathStringSer(0x40, SharedPathString.class) {
+            @Override
+            @SneakyThrows
+            Object read(ObjectInput input) {
+                int size = input.readInt();
+                String[] arr = new String[size];
+                for (int i = 0; i < size; i++) {
+                    arr[i] = RecyclerUtils.intern(input.readUTF());
+                }
+                return SharedPathString.of(arr);
+            }
+
+            @Override
+            @SneakyThrows
+            void write(Object value, ObjectOutput input) {
+                SharedPathString path = ((SharedPathString) value);
+                input.writeInt(path.size());
+                for (String str : path.unsafeSeparated()) {
+                    input.writeUTF(str);
+                }
+            }
+        },
+        SeparatedCharSequenceSer(0x41, SeparatedCharSequence.class) {
+            @Override
+            @SneakyThrows
+            Object read(ObjectInput input) {
+                char c = input.readChar();
+                int size = input.readInt();
+                String[] arr = new String[size];
+                for (int i = 0; i < size; i++) {
+                    arr[i] = input.readUTF();
+                }
+                return SeparatedString.create(c, arr);
+            }
+
+            @Override
+            @SneakyThrows
+            void write(Object value, ObjectOutput input) {
+                SeparatedCharSequence path = ((SeparatedCharSequence) value);
+                input.writeChar(path.separator());
+                input.writeInt(path.size());
+                for (CharSequence str : path) {
+                    input.writeUTF(str.toString());
+                }
+            }
+        },
+        StackTraceElement(0x42, java.lang.StackTraceElement.class) {
+            @Override
+            @SneakyThrows
+            Object read(ObjectInput input) {
+                String className = input.readUTF();
+                String methodName = input.readUTF();
+
+                String fileName = SerializeUtils.readNullableUTF(input);
+
+                int lineNumber = input.readInt();
+                return new StackTraceElement(className, methodName, fileName, lineNumber);
+            }
+
+            @Override
+            @SneakyThrows
+            void write(Object value, ObjectOutput input) {
+                StackTraceElement element = ((StackTraceElement) value);
+                input.writeUTF(element.getClassName());
+                input.writeUTF(element.getMethodName());
+
+                SerializeUtils.writeNullableUTF(element.getFileName(), input);
+
+                input.writeInt(element.getLineNumber());
             }
         };
 

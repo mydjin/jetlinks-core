@@ -66,6 +66,21 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
     }
 
     /**
+     * 使用默认的应用名作为作用域,使用指定的跟踪名创建跟踪器.
+     * <pre>{@code
+     *     return doSomeThing()
+     *              .as(MonoTracer.create("span.name"))
+     * }</pre>
+     *
+     * @param spanName spanName
+     * @param <T>      流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(CharSequence spanName) {
+        return create(TraceHolder.appName(), spanName);
+    }
+
+    /**
      * 使用指定的作用域以及跟踪名创建跟踪器.
      * <pre>{@code
      *     return doSomeThing()
@@ -78,6 +93,22 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
      */
     static <T> MonoTracer<T> create(String scopeName,
                                     String spanName) {
+        return create(scopeName, spanName, null, null);
+    }
+
+    /**
+     * 使用指定的作用域以及跟踪名创建跟踪器.
+     * <pre>{@code
+     *     return doSomeThing()
+     *              .as(MonoTracer.create("user.api","/user/created"))
+     * }</pre>
+     *
+     * @param spanName spanName
+     * @param <T>      流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(String scopeName,
+                                    CharSequence spanName) {
         return create(scopeName, spanName, null, null);
     }
 
@@ -97,6 +128,26 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
      * @return MonoTracer
      */
     static <T> MonoTracer<T> create(String spanName,
+                                    BiConsumer<ReactiveSpan, T> onNext) {
+        return create(TraceHolder.appName(), spanName, onNext, null);
+    }
+
+    /**
+     * 使用指定的span名称以及跟踪名创建跟踪器.
+     * <pre>{@code
+     *     return doSomeThing()
+     *              .as(MonoTracer.create(
+     *                  "/user/created",
+     *                  (span,user)->span.setAttribute(userId,user.getId())
+     *                  ))
+     * }</pre>
+     *
+     * @param spanName spanName
+     * @param onNext   onNext回调
+     * @param <T>      流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(CharSequence spanName,
                                     BiConsumer<ReactiveSpan, T> onNext) {
         return create(TraceHolder.appName(), spanName, onNext, null);
     }
@@ -144,6 +195,26 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
         return create(TraceHolder.appName(), spanName, null, builderConsumer);
     }
 
+    /**
+     * 使用指定span名称以及自定义SpanBuilder创建跟踪器
+     * <pre>{@code
+     *     return this
+     *     .doSomeThing()
+     *     .as(MonoTracer.create(
+     *                  "/user/created",
+     *                  (builder)->builder.setAttribute("uid",id)
+     *                  ))
+     * }</pre>
+     *
+     * @param spanName        spanName
+     * @param builderConsumer SpanBuilder 回调
+     * @param <T>             流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(CharSequence spanName,
+                                    Consumer<ReactiveSpanBuilder> builderConsumer) {
+        return create(TraceHolder.appName(), spanName, null, builderConsumer);
+    }
     /**
      * 使用指定的作用域和span名称以及自定义SpanBuilder创建跟踪器
      * <pre>{@code
@@ -217,6 +288,30 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
     }
 
     /**
+     * 使用指定的span名称,可通过onNext和onComplete来自定义span信息
+     * <pre>{@code
+     *     return this
+     *     .doSomeThing()
+     *     .as(MonoTracer.create(
+     *                  "/user/created",
+     *                  (span,user)->span.setAttribute(userId,user.getId()),
+     *                  (span,hasValue)->span.setAttribute("hasValue",hasValue)
+     *                  ))
+     * }</pre>
+     *
+     * @param spanName   spanName
+     * @param onNext     onNext回调
+     * @param onComplete onComplete 回调
+     * @param <T>        流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(CharSequence spanName,
+                                    BiConsumer<ReactiveSpan, T> onNext,
+                                    BiConsumer<ReactiveSpan, Boolean/*流中是否有值*/> onComplete) {
+        return create(TraceHolder.appName(), spanName, onNext, onComplete, null);
+    }
+
+    /**
      * 使用指定作用域和span名称,可通过onNext和builderConsumer来自定义span信息
      * <pre>{@code
      *     return this
@@ -243,6 +338,35 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
     }
 
     /**
+     * 使用指定作用域和span名称,可通过onNext和builderConsumer来自定义span信息
+     * <pre>{@code
+     *     return this
+     *     .doSomeThing()
+     *     .as(MonoTracer.create(
+     *                  "user.api",
+     *                  "/user/created",
+     *                  (span,user)->span.setAttribute(userId,user.getId()),
+     *                  (builder)->builder.setAttribute("uid",id)
+     *                  ))
+     * }</pre>
+     *
+     * @param spanName        spanName
+     * @param onNext          onNext回调
+     * @param builderConsumer builderConsumer 回调
+     * @param <T>             流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(String scopeName,
+                                    CharSequence spanName,
+                                    BiConsumer<ReactiveSpan, T/*流中的数据*/> onNext,
+                                    Consumer<ReactiveSpanBuilder> builderConsumer) {
+        return create(scopeName, spanName, onNext, null, builderConsumer);
+    }
+
+
+
+
+    /**
      * 使用指定作用域和span名称,可通过onNext,onComplete和builderConsumer来自定义span信息
      * <pre>{@code
      *     return this
@@ -267,7 +391,8 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
                                     BiConsumer<ReactiveSpan, T> onNext,
                                     BiConsumer<ReactiveSpan, Boolean> onComplete,
                                     Consumer<ReactiveSpanBuilder> builderConsumer) {
-        if (TraceHolder.isDisabled(spanName)) {
+        //全局关闭了,这里不判断spanName是否禁用,因为在执行时还会判断.
+        if (TraceHolder.isDisabled()) {
             return unsupported();
         }
         return MonoTracerBuilder
@@ -278,6 +403,45 @@ public interface MonoTracer<T> extends Function<Mono<T>, Mono<T>> {
                 .onComplete(onComplete != null ? (span, total) -> onComplete.accept(span, total > 0) : null)
                 .onSubscription(builderConsumer)
                 .build();
+    }
+
+    /**
+     * 使用指定作用域和span名称,可通过onNext,onComplete和builderConsumer来自定义span信息
+     * <pre>{@code
+     *     return this
+     *     .doSomeThing()
+     *     .as(MonoTracer.create(
+     *                  "user.api",
+     *                  "/user/created",
+     *                  (span,user)->span.setAttribute(userId,user.getId()),
+     *                  (span,hasValue)->span.setAttribute("hasValue",hasValue),
+     *                  (builder)->builder.setAttribute("uid",id)
+     *                  ))
+     * }</pre>
+     *
+     * @param spanName        spanName
+     * @param onNext          onNext回调
+     * @param builderConsumer builderConsumer 回调
+     * @param <T>             流元素类型
+     * @return MonoTracer
+     */
+    static <T> MonoTracer<T> create(String scopeName,
+                                    CharSequence spanName,
+                                    BiConsumer<ReactiveSpan, T> onNext,
+                                    BiConsumer<ReactiveSpan, Boolean> onComplete,
+                                    Consumer<ReactiveSpanBuilder> builderConsumer) {
+        //全局关闭了,这里不判断spanName是否禁用,因为在执行时还会判断.
+        if (TraceHolder.isDisabled()) {
+            return unsupported();
+        }
+        return MonoTracerBuilder
+            .<T>create(true)
+            .scopeName(scopeName)
+            .spanName(spanName)
+            .onNext(onNext)
+            .onComplete(onComplete != null ? (span, total) -> onComplete.accept(span, total > 0) : null)
+            .onSubscription(builderConsumer)
+            .build();
     }
 
     /**

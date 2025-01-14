@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jetlinks.core.device.DeviceOperator;
 import org.jetlinks.core.message.codec.EncodedMessage;
+import org.jetlinks.core.message.codec.ToDeviceMessageContext;
 import org.jetlinks.core.message.codec.Transport;
 import org.jetlinks.core.utils.Reactors;
 import reactor.core.publisher.Mono;
@@ -92,14 +93,9 @@ public class ChildrenDeviceSession implements DeviceSession, ReplaceableDeviceSe
         this.lastKeepAliveTime = System.currentTimeMillis();
     }
 
-    @Override
-    public boolean isAlive() {
-        return aliveByKeepAlive() && parent.isAlive();
-    }
-
     private boolean aliveByKeepAlive() {
         return keepAliveTimeOutMs <= 0
-                || System.currentTimeMillis() - lastKeepAliveTime < keepAliveTimeOutMs;
+            || System.currentTimeMillis() - lastKeepAliveTime < keepAliveTimeOutMs;
     }
 
     @Override
@@ -141,10 +137,18 @@ public class ChildrenDeviceSession implements DeviceSession, ReplaceableDeviceSe
     }
 
     @Override
+    public boolean isAlive() {
+        if (keepAliveTimeOutMs > 0 && aliveByKeepAlive()) {
+            return true;
+        }
+        return parent.isAlive();
+    }
+
+    @Override
     public Mono<Boolean> isAliveAsync() {
-        //心跳超时
-        if (!aliveByKeepAlive()) {
-            return Reactors.ALWAYS_FALSE;
+        //使用心跳时间来保活
+        if (keepAliveTimeOutMs > 0 && aliveByKeepAlive()) {
+            return Reactors.ALWAYS_TRUE;
         }
         //判断上级
         return parent.isAliveAsync();
@@ -178,5 +182,10 @@ public class ChildrenDeviceSession implements DeviceSession, ReplaceableDeviceSe
         if (parentChanged != null) {
             parentChanged.accept(old, this.parent);
         }
+    }
+
+    @Override
+    public Mono<Boolean> send(ToDeviceMessageContext context) {
+        return parent.send(context);
     }
 }

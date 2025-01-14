@@ -1,23 +1,25 @@
 declare module java.lang {
 
     // @ts-ignore
-    class Object extends Function{
+    class Object extends Function {
 
-        private static arguments: any;
-        private static caller: any;
-        private static length: any;
-        private static prototype: any;
-        private static name: any;
 
-        private static toString(): string;
 
-        private static apply<T>(this: new () => T, thisArg: T): void;
-        private static apply<T, A extends any[]>(this: new (...args: A) => T, thisArg: T, args: A): void;
+        private arguments: any;
+        private caller: any;
+        private length: any;
+        private prototype: any;
+        private name: any;
 
-        private static call<T, A extends any[]>(this: new (...args: A) => T, thisArg: T, ...args: A): void;
+        private toString(): string;
 
-        private static bind<T>(this: T, thisArg: any): T;
-        private static bind<A extends any[], B extends any[], R>(this: new (...args: [...A, ...B]) => R, thisArg: any, ...args: A): new (...args: B) => R;
+        private apply<T>(this: new () => T, thisArg: T): void;
+        private apply<T, A extends any[]>(this: new (...args: A) => T, thisArg: T, args: A): void;
+
+        private call<T, A extends any[]>(this: new (...args: A) => T, thisArg: T, ...args: A): void;
+
+        private bind<T>(this: T, thisArg: any): T;
+        private bind<A extends any[], B extends any[], R>(this: new (...args: [...A, ...B]) => R, thisArg: any, ...args: A): new (...args: B) => R;
 
     }
 
@@ -31,10 +33,10 @@ declare module java.lang {
         private static name: any;
 
         private static EPSILON: number;
-        private static MAX_SAFE_INTEGER:number;
-        private static MIN_SAFE_INTEGER:number;
+        private static MAX_SAFE_INTEGER: number;
+        private static MIN_SAFE_INTEGER: number;
 
-        private static NaN:number;
+        private static NaN: number;
         private static NEGATIVE_INFINITY: number;
 
         private static POSITIVE_INFINITY: number;
@@ -155,7 +157,7 @@ declare module java.lang {
     }
 
 
-    interface Iterable<E> extends java.lang.Object{
+    interface Iterable<E> extends java.lang.Object {
 
         forEach(action: (element: E) => void): void;
 
@@ -302,8 +304,8 @@ declare module java.util {
     import Entry = java.util.Map.Entry;
 
     module stream {
-
-        interface Stream<E> extends java.lang.Object{
+        // @ts-ignore
+        class Stream<E> extends java.lang.Object {
 
             /**
              * 过滤流中的元素，仅保留满足给定条件的元素。
@@ -416,7 +418,7 @@ declare module java.util {
         /**
          * @see java.stream.Collectors
          */
-        interface Collector<T, A, R> extends java.lang.Object{
+        interface Collector<T, A, R> extends java.lang.Object {
 
             supplier(): () => A;
 
@@ -431,7 +433,7 @@ declare module java.util {
         /**
          * 提供用于收集流元素的静态工具类 Collectors。
          */
-        class Collectors extends java.lang.Object{
+        class Collectors extends java.lang.Object {
 
             /**
              * 创建一个收集器，将流元素收集到列表中。
@@ -480,7 +482,7 @@ declare module java.util {
     }
 
     namespace Map {
-        interface Entry<K, V> extends java.lang.Object{
+        interface Entry<K, V> extends java.lang.Object {
 
             getKey(): K;
 
@@ -491,7 +493,7 @@ declare module java.util {
         }
     }
 
-    export class Map<K, V> extends java.lang.Object{
+    export class Map<K, V> extends java.lang.Object {
 
         /**
          * 根据键获取映射中的值。
@@ -646,6 +648,33 @@ declare module java.util {
         private reduce(callbackfn: (previousValue: E, currentValue: E, currentIndex: number, array: E[]) => E): E;
 
         private reduceRight(callbackfn: (previousValue: E, currentValue: E, currentIndex: number, array: E[]) => E): E;
+
+        private reverse(): E[];
+
+        private shift(): E | undefined;
+
+        private unshift(...items: E[]): number;
+
+        private slice(start?: number, end?: number): E[];
+
+        private some(predicate: (value: E, index: number, array: E[]) => boolean, thisArg?: any): boolean;
+
+        private includes(searchElement: E, fromIndex?: number): boolean;
+        private flatMap(callback: (t: this, value: any, index: number, array: any[]) => E | readonly E[], thisArg?: this): boolean;
+        private flat<U,D>(t: this,depth?: D): U[];
+
+        private toLocaleString(): string ;
+
+        // @ts-ignore
+        private values(): IterableIterator<E>;
+
+        private splice(start: number, deleteCount?: number): E[] ;
+
+        private indexOf(searchElement: E, fromIndex?: number): number;
+
+        private lastIndexOf(searchElement: E, fromIndex?: number): number;
+
+
         private static arguments: any;
         private static caller: any;
         private static length: any;
@@ -653,7 +682,9 @@ declare module java.util {
         private static name: any;
 
         private static from(): any;
+
         private static isArray(): any;
+
         private static of(): any;
 
         private static toString(): string;
@@ -750,15 +781,32 @@ declare module java.util {
          * 清空集合，移除所有元素。
          */
         clear(): void;
+
+
+        // @ts-ignore
+       private sort(compareFn?: (a: E, b: E) => number) : void;
     }
 
     export class Set<E> extends java.util.Collection<E> {
-
+        private static prototype: any;
     }
 
-
+    // @ts-ignore
     export class List<E> extends Collection<E> {
+        private static prototype: any;
 
+        get(index: int): E | null;
+
+        set(index: int, element: E): E | null;
+
+        indexOf(searchElement: E): number;
+
+        lastIndexOf(searchElement: E): number;
+
+        subList(fromIndex: int, toIndex: int): List<E>;
+
+        // @ts-ignore
+        sort(compareFn?: (a: E, b: E) => number) : void;
     }
 
     export class HashSet<E> extends Set<E> {
@@ -986,20 +1034,22 @@ declare module java.util {
     }
 
     class TreeSet<E> extends NavigableSet<E> {
-
+        private static prototype: any;
     }
 
     class TreeMap<K, V> extends NavigableMap<K, V> {
-
+        private static prototype: any;
     }
 
     class HashMap<K, V> extends Map<K, V> {
-
+        private static prototype: any;
     }
 
-
     class ArrayList<E> extends List<E> {
+        private static prototype: any;
+        constructor(collection: Collection<E>);
 
+        constructor();
     }
 
     /**

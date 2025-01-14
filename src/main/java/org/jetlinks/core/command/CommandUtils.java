@@ -1,12 +1,14 @@
 package org.jetlinks.core.command;
 
 import org.hswebframework.web.bean.FastBeanCopier;
+import org.jetlinks.core.metadata.FunctionMetadata;
 import org.reactivestreams.Publisher;
 import org.springframework.core.ResolvableType;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -52,6 +54,23 @@ public class CommandUtils {
         return response == null ? Flux.empty() : Flux.just(response);
     }
 
+    /**
+     * 转换对象为{@link Flux},当对象是{@link Publisher}时,将使用{@link Flux#from(Publisher)}进行转换,
+     * 否则使用{@link Flux#just(Object)}进行包装.
+     *
+     * @param response response
+     * @return Flux
+     */
+    @SuppressWarnings("all")
+    public static Flux<Object> convertResponseToFlux(Object response, Command<?> cmd) {
+        if (response instanceof Publisher) {
+            return Flux.from(((Publisher) response))
+                       .mapNotNull(cmd::createResponseData);
+        }
+        return response == null
+            ? Flux.empty()
+            : Flux.just(cmd.createResponseData(response));
+    }
 
     /**
      * 转换对象为{@link Mono}
@@ -74,6 +93,31 @@ public class CommandUtils {
                 .collectList();
         }
         return Mono.justOrEmpty(response);
+    }
+
+    /**
+     * 转换对象为{@link Mono}
+     * <p>当对象时{@link Mono}时,直接返回</p>
+     * <p>
+     * 当对象是{@link Publisher}时,将使用{@link Flux#collectList()}收集流中所有元素为{@link java.util.List}后返回{@link Mono},
+     * 否则使用{@link Mono#justOrEmpty(Object)}进行包装.
+     *
+     * @param response response
+     * @return Flux
+     */
+    @SuppressWarnings("all")
+    public static Mono<Object> convertResponseToMono(Object response, Command<?> cmd) {
+        if (response instanceof Mono) {
+            return ((Mono<?>) response)
+                .map(cmd::createResponseData);
+        }
+        if (response instanceof Publisher) {
+            return Flux
+                .from(((Publisher) response))
+                .map(cmd::createResponseData)
+                .collectList();
+        }
+        return Mono.justOrEmpty(cmd.createResponseData(response));
     }
 
     //命令返回类型缓存
@@ -100,7 +144,11 @@ public class CommandUtils {
      * @return 数据类型
      */
     public static ResolvableType getCommandResponseDataType(Class<?> cmd) {
-        ResolvableType type = CommandUtils.getCommandResponseType(cmd);
+
+        return getCommandResponseDataType(CommandUtils.getCommandResponseType(cmd));
+    }
+
+    public static ResolvableType getCommandResponseDataType(ResolvableType type) {
         Class<?> typeClazz = type.toClass();
         if (Publisher.class.isAssignableFrom(typeClazz) ||
             Collection.class.isAssignableFrom(typeClazz)) {
@@ -154,7 +202,7 @@ public class CommandUtils {
      * @return 转换后的数据
      */
     public static Object convertData(ResolvableType type, Object value) {
-        if (type.isInstance(value)) {
+        if (type.isInstance(value) || value == null || type.toClass() == Void.class) {
             return value;
         }
         ResolvableType[] genType = type.getGenerics();
@@ -204,4 +252,19 @@ public class CommandUtils {
         return Mono.class.isAssignableFrom(getCommandResponseType(command).toClass());
     }
 
+    /**
+     * 根据命令返回类型是否为Flux设置扩展标识
+     *
+     * @param command  命令对象
+     * @param metadata 命令参数
+     * @return FunctionMetadata
+     */
+    public static FunctionMetadata wrapMetadata(Command<?> command, FunctionMetadata metadata) {
+
+        if (metadata.getExpand(CommandConstant.responseFlux).isPresent()) {
+            return metadata;
+        }
+
+        return metadata.expand(CommandConstant.responseFlux, commandResponseFlux(command));
+    }
 }

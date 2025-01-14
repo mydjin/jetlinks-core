@@ -2,8 +2,12 @@ package org.jetlinks.core.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.hswebframework.web.exception.ValidationException;
+import org.jetlinks.core.exception.DeviceOperationException;
 
+import java.net.SocketTimeoutException;
 import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 
 /**
  * @author bsetfeng
@@ -29,7 +33,8 @@ public enum ErrorCode {
     CYCLIC_DEPENDENCE("error.code.cyclic_dependence"),
     SERVER_NOT_AVAILABLE("error.code.server_not_available"),
     UNKNOWN("error.code.unknown"),
-    SYSTEM_BUSY("error.code.system_busy"),;
+    SYSTEM_BUSY("error.code.system_busy"),
+    ;
 
     private final String text;
 
@@ -43,6 +48,32 @@ public enum ErrorCode {
             }
         }
         return Optional.empty();
+    }
+
+    public static ErrorCode of(Throwable e) {
+        if (e instanceof DeviceOperationException) {
+            return ((DeviceOperationException) e).getCode();
+        }
+        // 参数错误
+        else if (e instanceof IllegalArgumentException
+            || e instanceof ValidationException
+            || e instanceof javax.validation.ValidationException
+            || e instanceof NullPointerException
+            || e instanceof IndexOutOfBoundsException) {
+            return ErrorCode.PARAMETER_ERROR;
+        }
+        // 不支持
+        else if (e instanceof UnsupportedOperationException) {
+            return ErrorCode.UNSUPPORTED_MESSAGE;
+        }
+        // 超时
+        else if (e instanceof TimeoutException
+            || e instanceof SocketTimeoutException
+            || e instanceof io.netty.handler.timeout.TimeoutException) {
+            return ErrorCode.TIME_OUT;
+        } else {
+            return ErrorCode.SYSTEM_ERROR;
+        }
     }
 
 }

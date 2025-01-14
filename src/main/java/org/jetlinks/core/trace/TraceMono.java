@@ -25,7 +25,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 public class TraceMono<T> extends MonoOperator<T, T> {
-    private final Function<ContextView, String> spanName;
+    private final Function<ContextView, CharSequence> spanName;
     private final Tracer tracer;
     private final Consumer3<ContextView, ReactiveSpan, T> onNext;
     private final Consumer3<ContextView, ReactiveSpan, Long> onComplete;
@@ -48,7 +48,7 @@ public class TraceMono<T> extends MonoOperator<T, T> {
     }
 
     TraceMono(Mono<? extends T> source,
-              Function<ContextView, String> name,
+              Function<ContextView, CharSequence> name,
               Tracer tracer,
               Consumer3<ContextView, ReactiveSpan, T> onNext,
               Consumer3<ContextView, ReactiveSpan, Long> onComplete,
@@ -164,29 +164,31 @@ public class TraceMono<T> extends MonoOperator<T, T> {
     public void subscribe(@Nonnull CoreSubscriber<? super T> actual) {
         try {
             ContextView context = actual.currentContext();
-            String name = spanName.apply(context);
+            CharSequence name = spanName.apply(context);
 
             if (fastSubscribe && TraceHolder.isDisabled(name)) {
                 this.source.subscribe(actual);
                 return;
             }
 
-            ReactiveSpanBuilder builder = new ReactiveSpanBuilderWrapper(tracer.spanBuilder(name));
+            ReactiveSpanBuilder builder = new ReactiveSpanBuilderWrapper(tracer.spanBuilder(name.toString()));
 
             Context ctx = context
                 .<Context>getOrEmpty(Context.class)
-                .orElseGet(defaultContext);
+                .orElseGet(defaultContext)
+                .with(TraceHolder.SPAN_NAME, name);
 
             if (null != onSubscription) {
                 this.onSubscription.accept(context, builder);
             }
 
+            Instant now = Instant.now();
             Span span = builder
-                .setStartTimestamp(Instant.now())
+                .setStartTimestamp(now)
                 .setParent(ctx)
                 .startSpan();
             try (Scope ignored = span.makeCurrent()) {
-                this.source.subscribe(new TraceSubscriber<>(actual, span, onNext, onComplete, onError, ctx));
+                this.source.subscribe(new TraceSubscriber<>(now, actual, span, onNext, onComplete, onError, ctx));
             } catch (Throwable e) {
                 actual.onError(e);
                 span.recordException(e);

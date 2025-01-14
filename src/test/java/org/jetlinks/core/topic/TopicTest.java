@@ -2,16 +2,69 @@ package org.jetlinks.core.topic;
 
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.jetlinks.core.utils.TopicUtils;
 import org.junit.Assert;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 
+import java.io.*;
 import java.time.Duration;
 
 @Slf4j
 public class TopicTest {
+
+
+    @Test
+    @SneakyThrows
+    public void testSer(){
+        Topic<String> a = Topic.createRoot();
+
+        Topic<String> p = a.append("/device/1/2/3/4");
+
+        ByteArrayOutputStream out =new ByteArrayOutputStream();
+        DataOutputStream dout = new DataOutputStream(out);
+        p.writeTo(dout);
+        dout.flush();
+
+        Assert.assertArrayEquals(
+            TopicUtils.split("/device/1/2/3/4"),
+            Topic.readArray(new DataInputStream(new ByteArrayInputStream(out.toByteArray())))
+        );
+
+    }
+
+    @Test
+    public void testArray() {
+        Topic<String> a = Topic.createRoot();
+
+        Assert.assertArrayEquals(
+            TopicUtils.split("/device/1/2/3/4"),
+            a.append("/device/1/2/3/4").asStringArray()
+        );
+
+    }
+
+    @Test
+    public void testEq() {
+        Topic<String> a = Topic.createRoot();
+        Topic<String> b = Topic.createRoot();
+
+        Assert.assertEquals(a.append("/device/1/2/3/4"),
+                            b.append("/device/1/2/3/4"));
+
+        Assert.assertEquals(a.append("/device/1/2/3/4").hashCode(),
+                            b.append("/device/1/2/3/4").hashCode());
+
+        Assert.assertNotEquals(a.append("/device/2/1/3/4"),
+                               b.append("/device/1/2/3/4"));
+
+        Assert.assertNotEquals(a.append("/device/2/1/3/4").hashCode(),
+                               b.append("/device/1/2/3/4").hashCode());
+
+
+    }
 
     @Test
     public void testRoot() {
@@ -60,7 +113,9 @@ public class TopicTest {
     @Test
     public void testPattern3() {
         Topic<String> root = Topic.createRoot();
-        root.append("/device/0/message/property/*/reply").subscribe("1");
+        Topic<String> t = root.append("/device/0/message/property/*/reply");
+        System.out.println(t.getTopic());
+        t.subscribe("1");
         root.append("/device/0/message/property/report").subscribe("1");
 
         root.findTopic("/device/0/message/property/report")
@@ -198,6 +253,7 @@ public class TopicTest {
             .verifyComplete();
 
         Assert.assertNull(root.getTopic("/1/org/5").orElse(null));
+        Assert.assertNull(root.getTopic(TopicUtils.split("/1/org/5")).orElse(null));
 
 
     }
@@ -206,7 +262,7 @@ public class TopicTest {
     public void testSub() {
         Topic<String> root = Topic.createRoot();
 
-        root.append("/device/*").subscribe("testId");
+        root.append(TopicUtils.split("/device/*")).subscribe("testId");
 
         System.out.println(root);
 
@@ -260,13 +316,13 @@ public class TopicTest {
             long time = System.currentTimeMillis();
             for (int x = 0; x < 10; x++) {
                 Duration duration =
-                        Flux.range(0, 10000)
-                            .flatMap(i -> root
-                                    .findTopic("/device/1/" + i + "/message/property/read"))
-                            .count()
-                            .as(StepVerifier::create)
-                            .expectNext(10000L)
-                            .verifyComplete();
+                    Flux.range(0, 10000)
+                        .flatMap(i -> root
+                            .findTopic("/device/1/" + i + "/message/property/read"))
+                        .count()
+                        .as(StepVerifier::create)
+                        .expectNext(10000L)
+                        .verifyComplete();
                 log.debug("find 10000 use time:{}ms", duration.toMillis());
             }
             log.debug("find 10*10000 use time:{}ms", System.currentTimeMillis() - time);
@@ -275,35 +331,43 @@ public class TopicTest {
 
         {
             Duration duration = root
-                    .findTopic("/device/1/*/message/property/read")
-                    .map(Topic::getTopic)
-                    .count()
-                    .as(StepVerifier::create)
-                    .expectNext(10000L)
-                    .verifyComplete();
+                .findTopic("/device/1/*/message/property/read")
+                .map(Topic::getTopic)
+                .count()
+                .as(StepVerifier::create)
+                .expectNext(10000L)
+                .verifyComplete();
             log.debug("find device use time:{}ms", duration.toMillis());
         }
         {
             Duration duration =
-                    Flux.range(0, 100000)
-                        .flatMap(ignore -> root
-                                .findTopic("/device/1/2/message/property/read"))
-                        .map(Topic::getTopic)
-                        .count()
-                        .as(StepVerifier::create)
-                        .expectNext(100000L)
-                        .verifyComplete();
+                Flux.range(0, 100000)
+                    .flatMap(ignore -> root
+                        .findTopic("/device/1/2/message/property/read"))
+                    .map(Topic::getTopic)
+                    .count()
+                    .as(StepVerifier::create)
+                    .expectNext(100000L)
+                    .verifyComplete();
             log.debug("find 100000 time:{}ms", duration.toMillis());
         }
         {
             Duration duration = root
-                    .findTopic("/device/**")
-                    .map(Topic::getTopic)
-                    .count()
-                    .as(StepVerifier::create)
-                    .expectNext(root.getTotalTopic())
-                    .verifyComplete();
+                .findTopic("/device/**")
+                .map(Topic::getTopic)
+                .count()
+                .as(StepVerifier::create)
+                .expectNext(root.getTotalTopic())
+                .verifyComplete();
             log.debug("find all use time:{}ms", duration.toMillis());
         }
+
+        root.append("/device/*/*/message/property/read")
+            .subscribe("testId");
+
+        root.cleanup();
+
+        log.debug("topics:{}", root.getTotalTopic());
+
     }
 }

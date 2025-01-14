@@ -39,7 +39,7 @@ public abstract class AbstractCommandSupport implements CommandSupport {
 
     @Nonnull
     @Override
-    public final <R> R execute(@Nonnull Command<R> command) {
+    public <R> R execute(@Nonnull Command<R> command) {
 
         //直接执行可执行的指令
         if (command instanceof ExecutableCommand) {
@@ -59,7 +59,7 @@ public abstract class AbstractCommandSupport implements CommandSupport {
     }
 
     @Override
-    public final <R, C extends Command<R>> C createCommand(String commandId) {
+    public <R, C extends Command<R>> C createCommand(String commandId) {
         CommandHandler<Command<?>, ?> handler = handlers.get(commandId);
 
         if (null != handler) {
@@ -73,9 +73,12 @@ public abstract class AbstractCommandSupport implements CommandSupport {
     @Override
     public Flux<FunctionMetadata> getCommandMetadata() {
         return Flux
-            .fromIterable(handlers.values())
-            .distinct()
-            .mapNotNull(CommandHandler::getMetadata);
+                .fromIterable(handlers.values())
+                .distinct()
+                .mapNotNull(handler -> Optional
+                        .ofNullable(handler.getMetadata())
+                        .map(m-> CommandUtils.wrapMetadata(handler.createCommand(), m))
+                        .orElse(null));
     }
 
     @Override
@@ -86,7 +89,9 @@ public abstract class AbstractCommandSupport implements CommandSupport {
     public Optional<FunctionMetadata> getRegisteredMetadata(String commandId) {
         CommandHandler<Command<?>, ?> handler = handlers.get(commandId);
         if (handler != null) {
-            return Optional.ofNullable(handler.getMetadata());
+            return Optional
+                    .ofNullable(handler.getMetadata())
+                    .map(m-> CommandUtils.wrapMetadata(handler.createCommand(), m));
         }
         return Optional.empty();
     }

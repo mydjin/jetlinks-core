@@ -7,6 +7,7 @@ import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
 import org.jetlinks.core.Lazy;
+import org.jetlinks.core.LazyConverter;
 import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
 import reactor.core.publisher.BaseSubscriber;
@@ -20,6 +21,7 @@ import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
@@ -28,7 +30,7 @@ class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
 
     @SuppressWarnings("all")
     final static AtomicLongFieldUpdater<TraceSubscriber> NEXT_COUNT = AtomicLongFieldUpdater
-            .newUpdater(TraceSubscriber.class, "nextCount");
+        .newUpdater(TraceSubscriber.class, "nextCount");
 
     private final CoreSubscriber<? super T> actual;
     private final Span span;
@@ -38,9 +40,12 @@ class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
 
     private volatile long nextCount;
     private volatile boolean stateSet;
+    private final long startWithNanos;
+    private final Instant startWith;
     private final Context context;
 
-    public TraceSubscriber(CoreSubscriber<? super T> actual,
+    public TraceSubscriber(Instant startWith,
+                           CoreSubscriber<? super T> actual,
                            Span span,
                            Consumer3<ContextView, ReactiveSpan, T> onNext,
                            Consumer3<ContextView, ReactiveSpan, Long> onComplete,
@@ -51,10 +56,12 @@ class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
         this.onNext = onNext;
         this.onComplete = onComplete;
         this.onError = onError;
+        this.startWithNanos = System.nanoTime();
+        this.startWith = startWith;
         this.context = reactor.util.context.Context
-                .of(actual.currentContext())
-                .put(SpanContext.class, span.getSpanContext())
-                .put(io.opentelemetry.context.Context.class, span.storeInContext(ctx));
+            .of(actual.currentContext())
+            .put(SpanContext.class, span.getSpanContext())
+            .put(io.opentelemetry.context.Context.class, span.storeInContext(ctx));
     }
 
     @Override
@@ -85,7 +92,13 @@ class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
 
     @Override
     protected void hookFinally(@Nonnull SignalType type) {
-        span.end(Instant.now());
+
+        try (Scope ignored = context
+            .get(io.opentelemetry.context.Context.class)
+            .makeCurrent()) {
+            span.end(startWith.plusNanos(System.nanoTime() - startWithNanos));
+        }
+
     }
 
     @Override
@@ -129,6 +142,15 @@ class TraceSubscriber<T> extends BaseSubscriber<T> implements ReactiveSpan {
     @SuppressWarnings("all")
     public <T> ReactiveSpan setAttributeLazy(AttributeKey<T> key, Supplier<T> lazyValue) {
         span.setAttribute((AttributeKey) key, (lazyValue instanceof Lazy ? lazyValue : Lazy.of(lazyValue)));
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("all")
+    public <V, T> ReactiveSpan setAttributeLazy(AttributeKey<T> key, V value, Function<V, T> lazyValue) {
+        span.setAttribute((AttributeKey) key,
+                          (lazyValue instanceof LazyConverter ? lazyValue :
+                              LazyConverter.of(value, lazyValue)));
         return this;
     }
 

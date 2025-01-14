@@ -1,18 +1,29 @@
 package org.jetlinks.core.utils;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.apache.commons.beanutils.BeanUtilsBean;
+import org.apache.commons.beanutils.PropertyUtils;
+import org.apache.commons.beanutils.PropertyUtilsBean;
+import org.apache.commons.collections4.MapUtils;
 import org.hswebframework.web.dict.EnumDict;
+import org.hswebframework.web.i18n.LocaleUtils;
 import org.jetlinks.core.metadata.DataType;
+import org.jetlinks.core.metadata.Metadata;
 import org.jetlinks.core.metadata.PropertyMetadata;
 import org.jetlinks.core.metadata.SimplePropertyMetadata;
 import org.jetlinks.core.metadata.types.*;
+import org.jetlinks.core.things.ThingsConfigKeys;
 import org.reactivestreams.Publisher;
 import org.springframework.core.ResolvableType;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 import reactor.util.function.Tuples;
 
+import java.beans.IntrospectionException;
+import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -23,6 +34,84 @@ import java.util.*;
  * @since 1.2.2
  */
 public class MetadataUtils {
+
+    /**
+     * 解析物模型中的国际化消息,通过在物模型的{@link Metadata#getExpand(String)}中定义国际化信息.
+     * <pre>{@code
+     * {
+     *     "id":"",
+     *     "name:"",
+     *     "expands":{
+     *         "i18nMessages":{
+     *             "name":{"zh":"名称","en":"name"},
+     *             "description":{"zh":"描述","en":"description"}
+     *         }
+     *     }
+     * }
+     *
+     * }</pre>
+     *
+     * @param locale     语言地区
+     * @param metadata   物模型
+     * @param key        消息key
+     * @param defaultMsg 默认消息
+     * @return 国际化消息
+     * @see ThingsConfigKeys#i18nMessages
+     */
+    public static String resolveI18nMessage(Locale locale,
+                                            Metadata metadata,
+                                            String key,
+                                            String defaultMsg) {
+        return resolveI18nMessage(
+            locale,
+            metadata.getExpand(ThingsConfigKeys.i18nMessages).orElse(null),
+            key,
+            defaultMsg
+        );
+    }
+
+
+    /**
+     * 解析国际化消息,通过在物模型的{@link Metadata#getExpand(String)}中定义国际化信息.
+     * <pre>{@code
+     * {
+     *    "name":{"zh":"名称","en":"name"},
+     *    "description":{"zh":"描述","en":"description"}
+     * }
+     * }</pre>
+     *
+     * @param locale     语言地区
+     * @param source     源数据
+     * @param key        消息key
+     * @param defaultMsg 默认消息
+     * @return 国际化消息
+     * @see ThingsConfigKeys#i18nMessages
+     */
+    public static String resolveI18nMessage(Locale locale,
+                                            Map<String, Map<String, String>> source,
+                                            String key,
+                                            String defaultMsg) {
+        if (MapUtils.isEmpty(source)) {
+            return defaultMsg;
+        }
+        Map<String, String> i18n = source.get(key);
+        if (MapUtils.isEmpty(i18n)) {
+            return defaultMsg;
+        }
+
+        String msg = i18n.get(locale.toString());
+        if (msg != null) {
+            return msg;
+        }
+
+        msg = i18n.get(locale.getLanguage());
+        if (msg != null) {
+            return msg;
+        }
+
+        return defaultMsg;
+    }
+
 
     /**
      * 根据类字段解析属性元数据
@@ -61,7 +150,7 @@ public class MetadataUtils {
 
         private PropertyMetadata withField0(Object owner, Field field, ResolvableType type) {
 
-            Schema schema = field.getAnnotation(Schema.class);
+            Schema schema = this.getSchema(type.toClass(), field);
             String id = field.getName();
 
             SimplePropertyMetadata metadata = new SimplePropertyMetadata();
@@ -153,13 +242,29 @@ public class MetadataUtils {
                     objectType.addPropertyMetadata(withField0(fClass, field, ResolvableType.forClass(Map.class)));
                     return;
                 }
-                Schema schema = field.getAnnotation(Schema.class);
+                Schema schema = getSchema(fClass, field);
                 if (schema != null && !schema.hidden()) {
-                    objectType.addPropertyMetadata(withField0(fClass, field, ResolvableType.forField(field, fClass)));
+                    objectType.addPropertyMetadata(withField0(fClass, field, ResolvableType.forField(field, type)));
                 }
             });
             return objectType;
         }
 
+        private Schema getSchema(Class<?> owner, Field field) {
+            String name = field.getName();
+            try {
+                PropertyDescriptor descriptor = new PropertyDescriptor(name, owner);
+                Method method = descriptor.getReadMethod();
+                if (method != null) {
+                    Schema schema = AnnotatedElementUtils.getMergedAnnotation(field, Schema.class);
+                    if (schema != null) {
+                        return schema;
+                    }
+                }
+            } catch (IntrospectionException ignore) {
+
+            }
+            return AnnotatedElementUtils.getMergedAnnotation(field, Schema.class);
+        }
     }
 }

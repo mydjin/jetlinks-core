@@ -4,6 +4,7 @@ import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.ContextKey;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.context.propagation.TextMapGetter;
@@ -33,6 +34,8 @@ import java.util.function.Function;
  * @since 1.2
  */
 public class TraceHolder {
+
+    static final ContextKey<CharSequence> SPAN_NAME = ContextKey.named("spanName");
 
     //全局应用名: -Dtrace.app.name
     private static String GLOBAL_APP_NAME = System.getProperty("trace.app.name", "default");
@@ -86,6 +89,17 @@ public class TraceHolder {
      * @return 是否开启
      */
     public static boolean isEnabled(String name) {
+        return isEnabled((CharSequence)name);
+    }
+
+    /**
+     * 判断指定的spanName是否开启. spanName支持以/分割的树结构,
+     * 如: /device/id/operation
+     *
+     * @param name spanName
+     * @return 是否开启
+     */
+    public static boolean isEnabled(CharSequence name) {
         //全局关闭
         if (!traceEnabled) {
             return false;
@@ -94,15 +108,17 @@ public class TraceHolder {
         //获取启用的span
         enabledSpanName
             .findTopic(name,
-                       topic -> enabled.set(true),
-                       () -> {
+                       enabled,
+                       (e,topic )-> e.set(true),
+                       (e) -> {
                        });
         if (enabled.get() == null) {
             //获取禁用的span
             disabledSpanName
                 .findTopic(name,
-                           topic -> enabled.set(false),
-                           () -> {
+                           enabled,
+                           (e,topic )-> e.set(false),
+                           (e) -> {
                            });
         }
         if (enabled.get() == null) {
@@ -112,6 +128,7 @@ public class TraceHolder {
         return enabled.get();
     }
 
+
     /**
      * 判断指定的spanName是否禁用,与{@link #isEnabled(String)}逻辑相反
      *
@@ -119,6 +136,10 @@ public class TraceHolder {
      * @return 是否开启
      */
     public static boolean isDisabled(String name) {
+        return telemetry == null || !isEnabled(name);
+    }
+
+    public static boolean isDisabled(CharSequence name) {
         return telemetry == null || !isEnabled(name);
     }
 

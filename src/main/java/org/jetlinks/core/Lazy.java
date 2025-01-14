@@ -47,6 +47,7 @@ public class Lazy<T> implements Supplier<T>, Externalizable {
     }
 
     @Override
+    @SuppressWarnings("all")
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         value = (T) SerializeUtils.readObject(in);
         resolved = true;

@@ -1,10 +1,12 @@
 package org.jetlinks.core.message;
 
+import org.hswebframework.web.exception.ValidationException;
 import org.jetlinks.core.enums.ErrorCode;
+import org.jetlinks.core.exception.DeviceOperationException;
 import org.jetlinks.core.utils.SerializeUtils;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.validation.constraints.NotNull;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
@@ -25,15 +27,21 @@ public interface ThingMessageReply extends ThingMessage {
     //设置失败
     default ThingMessageReply error(String errorCode, String msg) {
         return success(false)
-                .code(errorCode)
-                .message(msg);
+            .code(errorCode)
+            .message(msg);
     }
 
     //设置失败
     ThingMessageReply error(ErrorCode errorCode);
 
     //设置失败
-    ThingMessageReply error(Throwable err);
+    default ThingMessageReply error(Throwable e) {
+        return success(false)
+            .error(ErrorCode.of(e))
+            .message(e.getMessage())
+            .addHeader("errorType", e.getClass().getName())
+            .addHeader("errorMessage", e.getMessage());
+    }
 
     //设置物类型和物ID
     ThingMessageReply thingId(String type, String thingId);
@@ -44,26 +52,26 @@ public interface ThingMessageReply extends ThingMessage {
     ThingMessageReply success(boolean success);
 
     //设置业务码
-    ThingMessageReply code(@NotNull String code);
+    ThingMessageReply code(@Nonnull String code);
 
     //设置消息
-    ThingMessageReply message(@NotNull String message);
+    ThingMessageReply message(@Nonnull String message);
 
     //根据另外的消息填充对应属性
-    ThingMessageReply from(@NotNull Message message);
+    ThingMessageReply from(@Nonnull Message message);
 
     //设置消息ID
-    ThingMessageReply messageId(@NotNull String messageId);
+    ThingMessageReply messageId(@Nonnull String messageId);
 
     //设置时间戳
-    ThingMessageReply timestamp(@NotNull long timestamp);
+    ThingMessageReply timestamp(@Nonnull long timestamp);
 
     //添加头
     @Override
-    ThingMessageReply addHeader(@NotNull String header, @NotNull Object value);
+    ThingMessageReply addHeader(@Nonnull String header, @Nonnull Object value);
 
     @Override
-    default <T> ThingMessageReply addHeader(@NotNull HeaderKey<T> header, @NotNull T value) {
+    default <T> ThingMessageReply addHeader(@Nonnull HeaderKey<T> header, @Nonnull T value) {
         addHeader(header.getKey(), value);
         return this;
     }
@@ -87,5 +95,18 @@ public interface ThingMessageReply extends ThingMessage {
         this.success(in.readBoolean());
         this.code(SerializeUtils.readNullableUTF(in));
         this.message(SerializeUtils.readNullableUTF(in));
+    }
+
+    /**
+     * 断言请求是否成功,如果失败则抛出异常
+     *
+     * @throws DeviceOperationException error
+     * @since 1.2.2
+     */
+    default void assertSuccess() throws DeviceOperationException {
+        if (!isSuccess()) {
+            throw new DeviceOperationException
+                .NoStackTrace(ErrorCode.of(getCode()).orElse(ErrorCode.UNKNOWN), getMessage());
+        }
     }
 }

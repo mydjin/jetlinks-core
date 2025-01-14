@@ -7,7 +7,9 @@ import lombok.Setter;
 import org.jetlinks.core.device.DeviceOperator;
 import org.jetlinks.core.enums.ErrorCode;
 import org.jetlinks.core.exception.DeviceOperationException;
+import org.jetlinks.core.message.Headers;
 import org.jetlinks.core.message.codec.EncodedMessage;
+import org.jetlinks.core.message.codec.ToDeviceMessageContext;
 import org.jetlinks.core.message.codec.Transport;
 import org.jetlinks.core.utils.Reactors;
 import reactor.core.publisher.Mono;
@@ -19,6 +21,7 @@ import java.util.Optional;
 
 public class KeepOnlineSession implements DeviceSession, ReplaceableDeviceSession, PersistentSession {
 
+    @Getter
     DeviceSession parent;
 
     @Setter(AccessLevel.PACKAGE)
@@ -29,7 +32,7 @@ public class KeepOnlineSession implements DeviceSession, ReplaceableDeviceSessio
     //忽略上级会话信息,设置为true后. 设备是否离线以超时时间为准
     @Setter
     @Getter
-    private boolean ignoreParent = false;
+    private boolean ignoreParent = Headers.keepOnlineIgnoreParent.getDefaultValue();
 
     private long keepAliveTimeOutMs;
 
@@ -64,21 +67,16 @@ public class KeepOnlineSession implements DeviceSession, ReplaceableDeviceSessio
         return connectTime;
     }
 
-    public DeviceSession getParent() {
-        return parent;
-    }
-
     @Override
     public Mono<Boolean> send(EncodedMessage encodedMessage) {
         return Mono
-                .defer(() -> {
-                    if (parent.isAlive()) {
-                        return parent.send(encodedMessage);
-                    }
-                    return Mono
-                            .<Boolean>error(new DeviceOperationException.NoStackTrace(ErrorCode.CONNECTION_LOST))
-                            .doAfterTerminate(() -> ReferenceCountUtil.safeRelease(encodedMessage.getPayload()));
-                });
+            .defer(() -> {
+                if (parent.isAlive()) {
+                    return parent.send(encodedMessage);
+                }
+                ReferenceCountUtil.safeRelease(encodedMessage.getPayload());
+                return Mono.error(new DeviceOperationException.NoStackTrace(ErrorCode.CONNECTION_LOST));
+            });
     }
 
     @Override
@@ -112,7 +110,7 @@ public class KeepOnlineSession implements DeviceSession, ReplaceableDeviceSessio
 
     private boolean aliveByKeepAlive() {
         return keepAliveTimeOutMs <= 0
-                || System.currentTimeMillis() - lastKeepAliveTime < keepAliveTimeOutMs;
+            || System.currentTimeMillis() - lastKeepAliveTime < keepAliveTimeOutMs;
     }
 
     @Override
@@ -183,5 +181,10 @@ public class KeepOnlineSession implements DeviceSession, ReplaceableDeviceSessio
     @Override
     public String toString() {
         return "keepOnline[" + keepAliveTimeOutMs + "ms]:" + parent;
+    }
+
+    @Override
+    public Mono<Boolean> send(ToDeviceMessageContext context) {
+        return parent.send(context);
     }
 }

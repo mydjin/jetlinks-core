@@ -6,18 +6,62 @@ import org.springframework.util.ConcurrentReferenceHashMap;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 @Slf4j
 public class RecyclerUtils {
+    private static final Map<Object, Object> staticSharedObject = new ConcurrentHashMap<>();
 
     private static final Map<Object, Object> sharedObjects = new ConcurrentReferenceHashMap<>(
         65535,
         ConcurrentReferenceHashMap.ReferenceType.SOFT);
 
+    public static final boolean INTERN_ENABLED = "true".equals(
+        System.getProperty("jetlinks.recycler.intern.enabled", "true")
+    );
+
+    static {
+        share("");
+        share("*");
+        share("**");
+        share("device");
+        share("product");
+        share("org");
+        share("user");
+        share("creatorId");
+        share("message");
+        share("online");
+        share("offline");
+        share("property");
+        share("report");
+        share("reply");
+        share("read");
+        share("write");
+        share("properties");
+        share("function");
+        share("event");
+        share("_sys");
+    }
+
+    public static void clean() {
+        sharedObjects.clear();
+    }
+
     @SuppressWarnings("all")
-    public static <T> T intern(T str) {
-        return str == null ? null : (T) sharedObjects.computeIfAbsent(str, Function.identity());
+    public static <T> T intern(T obj) {
+        if (!INTERN_ENABLED || obj == null) {
+            return obj;
+        }
+        Object v = staticSharedObject.get(obj);
+        if (v != null) {
+            return (T) v;
+        }
+        return (T) sharedObjects.computeIfAbsent(obj, Function.identity());
+    }
+
+    public static void share(Object object) {
+        staticSharedObject.put(object, object);
     }
 
     public static <T> Recycler<T> newRecycler(Class<T> type, Function<Recycler.Handle<T>, T> objectSupplier, int defaultRatio) {

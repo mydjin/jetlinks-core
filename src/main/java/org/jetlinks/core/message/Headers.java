@@ -1,5 +1,9 @@
 package org.jetlinks.core.message;
 
+import org.jetlinks.core.Routable;
+import org.jetlinks.core.device.DeviceOperator;
+import org.jetlinks.core.message.interceptor.DeviceMessageSenderInterceptor;
+
 import java.util.concurrent.TimeUnit;
 
 public interface Headers {
@@ -25,6 +29,16 @@ public interface Headers {
      * 保持在线超时时间,超过指定时间未收到消息则认为离线
      */
     HeaderKey<Integer> keepOnlineTimeoutSeconds = HeaderKey.of("keepOnlineTimeoutSeconds", 600, Integer.class);
+
+    /**
+     * 保持在线,忽略父设备状态,强制以心跳超时来决定是否离线.
+     *
+     * @since core-1.2.3
+     * @since platform-2.3
+     */
+    HeaderKey<Boolean> keepOnlineIgnoreParent = HeaderKey.of("keepOnlineIgnoreParent",
+                                                             Boolean.getBoolean("device.session.keep-online.ignore-parent"),
+                                                             Boolean.class);
 
     /**
      * 异步消息,当发往设备的消息标记了为异步时,设备网关服务发送消息到设备后将立即回复{@link org.jetlinks.core.enums.ErrorCode#REQUEST_HANDLING}到发送端
@@ -83,6 +97,26 @@ public interface Headers {
 
     //是否使用时间戳作为数据ID
     HeaderKey<Boolean> useTimestampAsId = HeaderKey.of("useTimestampId", false, Boolean.class);
+
+    /**
+     * 标记数据ID,与{@link Headers#useTimestampAsId}不同,
+     * 如果在消息中指定了这个header,在存储设备属性数据时,将会根据此header的值来生成数据ID.
+     * <p>
+     * 生成规则为:
+     * <p>
+     * 单列模式(行式):<code>md5(deviceId+'-'+property+'-'+dataId)</code>.
+     * <p>
+     * 多列模式(列式):<code>md5(deviceId+'-'+dataId)</code>.
+     * <p>
+     * <b>注意：由于不同数据库的主键策略不同,此表示可能不会在某些存储策略中生效.
+     * </b>
+     * <p>
+     * 已知支持的存储策略: ElasticSearch、TimescaleDB.
+     *
+     * @see org.jetlinks.core.message.property.PropertyMessage
+     * @see Headers#useTimestampAsId
+     */
+    HeaderKey<String> dataId = HeaderKey.of("dataId", null, String.class);
 
     //是否属性为部分属性,如果为true,在列式存储策略下,将会把之前上报的属性合并到一起进行存储.
     HeaderKey<Boolean> partialProperties = HeaderKey.of("partialProperties", false, Boolean.class);
@@ -177,6 +211,36 @@ public interface Headers {
      * 消息是否支持来自多个接入网关,某些网关会过滤掉不属于自己网关的数据,设置此header为true以忽略过滤.
      */
     HeaderKey<Boolean> multiGateway = HeaderKey.of("multiGateway", false, Boolean.class);
+
+    /**
+     * 声明路由key
+     * <p>
+     * 应用场景:
+     * <ul>
+     *     <li>在集群环境下,相同的key将会被路由到同一个节点.</li>
+     *     <li>{@link org.jetlinks.core.event.EventBus}共享订阅时,相同的key将会被路由到同一个订阅者.</li>
+     * </ul>
+     *
+     * @see Routable#routeKey()
+     */
+    HeaderKey<Object> routeKey = HeaderKey.of("_routeKey", null, Object.class);
+
+    /**
+     * 标记下发指令的回复是否包含messageId,
+     * 如果设置为true,当下发指令回复时未携带messageId时,将按下发指令的先后来自动匹配.
+     * 可在下发的消息中设置{@link Message#addHeader(String, Object)}.
+     * <p>
+     * 或者通过在协议包定义
+     * {@link org.jetlinks.core.defaults.CompositeProtocolSupport#addMessageSenderInterceptor(DeviceMessageSenderInterceptor)}
+     * {@link org.jetlinks.core.message.interceptor.DeviceMessageSenderInterceptor#preSend(DeviceOperator, DeviceMessage)}
+     * 中,设置此header.
+     * <p>
+     * 注意: 集群环境时,此功能需要下发指令的节点和回复的节点在同一个节点.
+     * 如果是通过broker等方式接入,建议使用iphash的方式进行负载均衡.
+     *
+     * @see RepayableDeviceMessage
+     */
+    HeaderKey<Boolean> replyNoMessageId = HeaderKey.of("replyNoMessageId", false, Boolean.class);
 
     /**
      * copy有意义的header到新到消息中,比如标记异步,超时等信息
